@@ -2,21 +2,17 @@
 <package format="3">
   <name>robot_bringup</name>
   <version>0.1.0</version>
-  <description>Robot-specific deployment profiles and one-command launch files.</description>
+  <description>Robot-independent profile resolution and whole-stack launch orchestration.</description>
   <maintainer email="czy33114@gmail.com">czy</maintainer>
   <license>Proprietary</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>humanoid_adapter_manager</exec_depend>
   <exec_depend>humanoid_driver_runtime</exec_depend>
   <exec_depend>humanoid_motion_server</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  <exec_depend>openarmx_description</exec_depend>
-  <exec_depend>openarmx_mujoco</exec_depend>
-  <exec_depend>rclpy</exec_depend>
-  <exec_depend>std_srvs</exec_depend>
   <exec_depend>teleop_vr_recv</exec_depend>
 
   <export>
