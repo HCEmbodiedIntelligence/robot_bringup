@@ -1,11 +1,11 @@
 # 注册新机器人
 
 `robot_bringup` 不维护机器人枚举，也不读取已安装的机器人专用 ROS 包。新机器人通过
-`humanoid_manager` 部署两个独立插件和一个组合清单：
+`humanoid_manager` 导入两个独立插件，并在机器人页面生成内部组合清单：
 
 1. `hardware_driver`：预编译的 `RobotDriverPlugin`、pluginlib 元数据及其驱动参数；
 2. `robot_model`：motion/channel/tool 配置及运动学 URDF；
-3. `robot_composition`：只引用前两个插件 ID，不包含代码或机器人资源。
+3. 内部组合清单：由管理器保存，只引用前两个插件 ID，不要求用户制作 ZIP。
 
 目标机只安装核心包，不安装或编译厂商 driver、description、bringup 源码。ZIP schema、校验规则和
 CLI 用法见
@@ -25,14 +25,15 @@ CLI 用法见
 
 ## 部署和启动
 
-先部署驱动插件和模型插件，最后部署引用它们的组合清单：
+先导入驱动插件和模型插件，再在 `humanoid_manager` 网页的“机器人配置”中选择两者，填写
+机器人 ID 和名称并创建配置：
 
 ```bash
 ros2 run humanoid_manager humanoid_pluginctl.py deploy my-driver.zip
 ros2 run humanoid_manager humanoid_pluginctl.py deploy my-model.zip
-ros2 run humanoid_manager humanoid_pluginctl.py deploy my-composition.zip
-ros2 run humanoid_manager humanoid_pluginctl.py resolve my_robot_v1
 ```
+
+保存并应用后，管理器会生成并部署内部组合清单。网页同时配置关节、相机、底盘、夹爪和录制方案。
 
 由通用 bringup 启动已注册机器人：
 
