@@ -9,7 +9,7 @@ from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-from humanoid_adapter_manager.deployment import (
+from humanoid_manager.deployment import (
     DEFAULT_PLUGIN_ROOT,
     resolve_robot_deployment,
 )
@@ -68,14 +68,14 @@ def _launch_registered_robot(context):
         ),
     ]
 
-    if "teleop_config" in resources:
+    if "hc_teleop_config" in resources:
         actions.append(
             Node(
-                package="teleop_vr_recv",
-                executable="teleop_vr_recv_node",
-                name="teleop_vr_recv",
+                package="hc_teleop_recv",
+                executable="hc_teleop_recv_node",
+                name="hc_teleop_recv",
                 output="screen",
-                parameters=[{"config_file": str(resources["teleop_config"])}],
+                parameters=[{"config_file": str(resources["hc_teleop_config"])}],
                 additional_env=resource_environment,
                 condition=IfCondition(start_teleop),
                 on_exit=Shutdown(reason="teleoperation frontend exited"),
@@ -88,7 +88,7 @@ def _launch_registered_robot(context):
         "on",
     }:
         raise RuntimeError(
-            "start_teleop is true but the deployed profile has no teleop_config"
+            "start_teleop is true but the deployed profile has no hc_teleop_config"
         )
 
     return actions

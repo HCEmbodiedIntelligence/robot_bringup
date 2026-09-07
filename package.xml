@@ -8,12 +8,13 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <exec_depend>humanoid_adapter_manager</exec_depend>
+  <exec_depend>humanoid_manager</exec_depend>
   <exec_depend>humanoid_driver_runtime</exec_depend>
   <exec_depend>humanoid_motion_server</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  <exec_depend>teleop_vr_recv</exec_depend>
+  <exec_depend>hc_teleop_recv</exec_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
