@@ -16,5 +16,5 @@ def test_registered_robot_delegates_to_managed_launch(monkeypatch, tmp_path):
     includes = [action for action in actions if isinstance(action, IncludeLaunchDescription)]
     assert len(includes) == 1
     assert set(dict(includes[0].launch_arguments)) == {
-        "robot_id", "plugin_root", "start_driver", "start_motion", "start_teleop", "start_cameras"
+        "robot_id", "plugin_root", "start_driver", "start_gripper", "start_motion", "start_teleop", "start_cameras"
     }

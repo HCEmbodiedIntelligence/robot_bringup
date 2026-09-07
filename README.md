@@ -2,7 +2,7 @@
 
 `robot_bringup` is a compatibility entry point for robot-independent orchestration. It delegates
 to `humanoid_manager/managed_robot.launch.py`, which starts the selected driver runtime, motion
-server, optional teleoperation frontend, configured cameras, and configuration-state reporter.
+server, optional gripper runtime, teleoperation frontend, configured cameras, and configuration-state reporter.
 
 Start a managed deployment:
 
