@@ -43,7 +43,8 @@ ros2 launch robot_bringup registered_robot.launch.py \
   start_teleop:=false
 ```
 
-`start_driver`、`start_motion` 和 `start_teleop` 只控制核心进程是否启动。机器人专用的硬件上电、
+`start_driver`、`start_motion`、`start_teleop` 和 `start_cameras` 控制网页已应用配置中的运行组件。
+该入口委托给 `humanoid_manager/managed_robot.launch.py`，因此不会漏掉相机和配置状态节点。机器人专用的硬件上电、
 CAN 初始化或厂商控制器启动不应写入这个通用 launch，由整机 supervisor 在外层编排。
 
 ## HC PICO 末端遥操作

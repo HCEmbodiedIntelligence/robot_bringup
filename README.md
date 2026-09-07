@@ -1,8 +1,8 @@
 # robot_bringup
 
-`robot_bringup` is the robot-independent orchestration layer. It resolves a robot composition
-deployment managed by `humanoid_manager`, then starts the selected driver runtime,
-motion server, and optional teleoperation frontend.
+`robot_bringup` is a compatibility entry point for robot-independent orchestration. It delegates
+to `humanoid_manager/managed_robot.launch.py`, which starts the selected driver runtime, motion
+server, optional teleoperation frontend, configured cameras, and configuration-state reporter.
 
 Start a managed deployment:
 
@@ -17,3 +17,6 @@ receives validated plugin artifacts; it does not install robot-specific source p
 With `start_teleop:=true`, a model's `hc_teleop_config` starts `hc_teleop_recv` using the
 configuration resolved by the manager. The HC frontend outputs ServoP poses and obtains measured
 FK from the motion server. The retired `teleop_vr_recv` frontend is not part of this launch path.
+
+`start_cameras:=true` is the default and starts the camera list saved on the robot page. Use
+`start_cameras:=false` only when camera drivers are supervised separately.
