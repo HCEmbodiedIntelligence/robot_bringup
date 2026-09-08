@@ -1,88 +1,84 @@
-# 一次拉取、构建及管理器导入
+# 通用平台安装与网页配置
 
-`robot_bringup` 是工作区总入口。`workspace.repos` 记录仓库 URL 和版本；默认拉取 OpenArmX
-所需的 10 个仓库。独立 ROS 包 `humanoid_gripper` 随本仓库保存在
-`packages/humanoid_gripper`，同步会创建 `src/humanoid_gripper` 符号链接，构建时作为独立包编译。
+`robot_bringup` 是统一入口。默认仅拉取、构建以下 8 个通用仓库：
 
-机器人电脑要求 **Ubuntu 22.04、Intel/AMD x86-64、ROS 2 Humble**。预先安装 Git、
-`python3-rosdep` 和 `python3-colcon-common-extensions`；私有仓库需要已有 GitHub SSH 访问权限。
+- `humanoid_manager`：网页配置、运行状态和数据管理。
+- `hc_teleop_recv`：遥操作输入接收与映射。
+- `humanoid_motion_server`：运动计算和控制接口。
+- `humanoid_driver_runtime`、`humanoid_driver_interface`：驱动加载、运行时及接口。
+- `humanoid_motion_interfaces`：ROS 消息与 Action 定义。
+- `humanoid_camera`：通用相机接入。
+- `robot_bringup`：启动已配置的机器人及统一拉取脚本。
 
-## 新机器
+安装不会生成 `core` 文件夹，不会下载或生成整机 ZIP，也不会导入、选中或启动某款机器人。
+机型、驱动、模型、关节及遥操作参数由用户在管理器网页中配置。
 
-在希望创建工作区的目录执行：
+## 新机器安装
+
+目标电脑要求 **Ubuntu 22.04、Intel/AMD x86-64、ROS 2 Humble**。需要 GitHub 私有仓库
+访问权限；预先安装 `git`、`python3-rosdep` 和 `python3-colcon-common-extensions`。
 
 ```bash
 mkdir -p teleop_ws/src
 git clone git@github.com:HCEmbodiedIntelligence/robot_bringup.git teleop_ws/src/robot_bringup
 cd teleop_ws
 ./src/robot_bringup/workspace.sh setup --install-deps --jobs 2
+./src/robot_bringup/workspace.sh web
 ```
 
-这条 setup 命令按顺序拉取仓库、安装 ROS/SDK/网页依赖、构建 11 个 ROS 包，再生成
-`deploy_artifacts/openarmx-<时间>/openarmx-v10-complete.zip`。SDK 依赖源码编译可能耗时较长；
-系统依赖安装可能请求 sudo 密码。已有 `alg_dep` 时可加 `--sdk-source /path/to/alg_dep`。
-系统依赖已安装的机器省略 `--install-deps`。
+setup 会拉取源码、安装 ROS/SDK/网页依赖并构建。SDK 的系统依赖源码编译可能耗时较长，
+安装时可能请求 sudo 密码。已有 `alg_dep` 可加 `--sdk-source /path/to/alg_dep`；
+系统依赖已安装的电脑可省略 `--install-deps`。
 
-只需要拉代码，或只安装通用软件：
+web 在局域网地址 `http://机器人IP:7876/dashboard/#robots` 打开管理器，默认 ROS Domain 为 14。
+也可指定地址、端口和配置存放目录：
 
 ```bash
-./src/robot_bringup/workspace.sh sync --profile openarmx
-./src/robot_bringup/workspace.sh setup --profile core --install-deps
+./src/robot_bringup/workspace.sh web --host 0.0.0.0 --port 7876 --domain-id 14
 ```
 
-`core` 包含管理器、接收端、运动服务、通用驱动运行时、相机和接口包；`openarmx` 额外
-构建 OpenArmX 驱动、官方模型及独立夹爪插件。旧 `HC-teleop-robotic`、`teleop_vr_recv`
-和 MuJoCo 不参与这条真机软件链路。
+需要自定义目录时追加 `--plugin-root /path/to/plugins --state-root /path/to/manager-state`。
+默认插件目录优先使用已有 `/var/lib/humanoid-plugins`，否则使用 `~/.local/share/humanoid-plugins`。
 
-## 在网页导入
+## 在网页配置机器人
+
+首次运行时没有预设机器人，按以下流程操作：
+
+1. 在网页分别导入对应的机械臂驱动插件和模型插件，按需导入夹爪插件。
+2. 点击“新建机器人”，填写 ID 和名称，选择已导入的驱动及模型。
+3. 在页面编辑驱动话题、关节映射、URDF、运动通道、遥操作输入和坐标映射；按需配置相机与夹爪。
+4. 点击“保存配置”。系统校验关节、限位、坐标系、话题和资源的一致性，生成配置版本。
+5. 停止旧机器人进程，点击“应用配置”，将版本写入部署目录。
+
+这里的驱动/模型插件是分别导入的适配资源，不要求提供整机 ZIP。驱动插件必须实现平台接口；
+只填写厂商名称或 IP 不能代替缺失的硬件驱动。
+网页保存不会启动运动，应用也不会热改正在运行的机器人。应用要求管理器取得新鲜 ROS 节点
+状态以确认机器人进程已停止，因此正常配置使用默认在线网页模式。
+
+硬件驱动准备就绪后，启动网页中已应用的机器人 ID：
 
 ```bash
-./src/humanoid_manager/start_configurator.sh --host 0.0.0.0
+ROS_DOMAIN_ID=14 ./src/robot_bringup/scripts/start_robot.sh 你在网页填写的机器人ID
 ```
 
-在机器人局域网打开 `http://机器人IP:7876/dashboard/#robots`，点击“导入配置包”，选择
-整机配置并上传 **openarmx-v10-complete.zip**，填写新的机器人 ID 和名称。无需解压或逐个
-导入内部 ZIP。导入后可以编辑关节、夹爪、遥操作、相机等配置，保存并应用。
-夹爪映射已填写，默认关闭，可按实机接线在页面启用。
+如果网页使用自定义插件目录，启动命令追加 `plugin_root:=/同一个目录`。
+硬件层和管理器使用相同 ROS Domain。底层 CAN、厂商 SDK 或 ros2_control 的启动由对应硬件
+适配完成；本入口按网页配置启动平台运行时、运动服务、接收端和已配置相机。
 
-单独的 `driver.zip`、`model.zip`、`gripper.zip` 用于单插件导入。整机包由管理器自身的
-导出功能生成，并在临时目录中经过“导入 → 应用 → 解析”验证；打包不会覆盖当前机器人配置。
-
-## 启动机器人
-
-先按 OpenArmX 官方流程启动底层硬件和 ros2_control，使用发布目录中的
-`openarmx_v10_split_controllers.yaml`：左右手臂各 7 个关节，左右夹爪使用独立控制器。
-这个工作区的 `openarmx_driver` 是 Topic 适配器；官方硬件驱动、CAN 配置和电机控制参数
-仍需在机器人电脑上准备，不由 setup 自动启动。
-
-确认与硬件层使用相同 ROS Domain，再启动页面中已经应用的配置：
-
-```bash
-ROS_DOMAIN_ID=14 ./src/robot_bringup/scripts/start_robot.sh 你导入时填写的机器人ID
-```
-
-默认插件目录与管理器一致：优先已有 `/var/lib/humanoid-plugins`，否则
-`~/.local/share/humanoid-plugins`。网页使用自定义目录时，启动命令追加
-`plugin_root:=/同一个目录`。启动接收端后按右手 A 使能，松开再按 Grip 绑定实测起点。
-
-## 更新与重新打包
+## 更新
 
 ```bash
 ./src/robot_bringup/workspace.sh sync
-./src/robot_bringup/workspace.sh bundle --jobs 2
+./src/robot_bringup/workspace.sh build --jobs 2
 ```
 
-同步会先检查所有仓库是否有未提交修改或错误的 origin，更新只允许快进；不会自动 stash、
-reset 或覆盖本地提交。`bundle` 总会先构建，再从本次 `install` 打包，避免复用旧驱动。
-每次生成新目录，可通过 `--output /绝对路径/新目录` 指定位置；已有目录不覆盖。
+同步会先检查未提交修改及 origin，仅允许快进更新，不会自动 stash、reset 或覆盖本地提交。
+`workspace.sh status` 显示当前版本。仓库清单位于 `workspace.repos`；
+`humanoid_manager` 的现有远端仍叫 `humanoid_adapter_manager`，清单已处理目录名映射。
 
-`source-revisions.json` 记录各仓库提交、是否有本地修改以及产物 SHA-256；
-`workspace.lock.repos` 锁定相同版本。可使用 `sync --manifest /path/to/workspace.lock.repos`
-获取指定版本；含未提交修改的发布记录不能仅靠锁定清单复现。
-`workspace.repos` 使用 JSON 语法的 YAML，可交给 `vcs import src`，但正常操作无需安装 vcstool。
+`--profile core` 是默认选项，表示上述通用软件。`--profile openarmx` 仅供开发适配器时显式选择，
+会额外下载 OpenArmX 源码并编译随仓库管理的 `packages/humanoid_gripper`；机器人正常安装无需此选项。
+旧的 `HC-teleop-robotic`、`teleop_vr_recv` 和 MuJoCo 不参与默认链路。
 
-`humanoid_manager` 的目录名是包名；其现有远端仍叫 `humanoid_adapter_manager`，清单已处理映射。
-自定义模型模板与生成器位于自有 `openarmx_driver/deployment` 和 `tools/create_model_bundle.py`，
-官方 `openarmx_description` 固定提交只提供 URDF 资源。
-
-软件验收不会启动电机。上真机仍需核对关节零位与方向，并完成低速动作、输入断流和停止验证。
+配置流程的软件验收使用独立 ROS Domain 和 Mock 驱动；真实机器人仍需核对关节方向、零位，
+并完成低速动作及停止验证。

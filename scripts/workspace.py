@@ -80,6 +80,8 @@ def preflight_sync(workspace, entries):
 
 
 def sync_one(path, item, transport):
+    network_env = dict(os.environ)
+    network_env.setdefault("GIT_SSH_COMMAND", "ssh -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3")
     url = item["url"]
     if transport == "https":
         url = canonical_remote(url) + ".git" if "github.com" in url else url
@@ -91,8 +93,10 @@ def sync_one(path, item, transport):
         command = ["git", "clone"]
         if not pinned:
             command += ["--branch", ref, "--single-branch"]
-        run([*command, "--", url, path])
-    run(["git", "-C", path, "fetch", "--no-tags", "origin", ref])
+        run([*command, "--", url, path], env=network_env)
+        if not pinned:
+            return True
+    run(["git", "-C", path, "fetch", "--no-tags", "origin", ref], env=network_env)
     target = git(path, "rev-parse", "FETCH_HEAD")
     if pinned:
         if target != ref:
@@ -220,12 +224,22 @@ def status(args, entries):
               f" {'有本地修改' if dirty else '干净'}")
 
 
+def web(args, _entries):
+    command = [args.workspace / "src/humanoid_manager/start_configurator.sh",
+               "--host", args.host, "--port", str(args.port), "--domain-id", str(args.domain_id)]
+    for key in ("plugin_root", "state_root"):
+        if getattr(args, key):
+            command += ["--" + key.replace("_", "-"), getattr(args, key)]
+    run(command, cwd=args.workspace)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("sync", "status", "deps", "build", "bundle", "setup"))
+    parser.add_argument("command", choices=("sync", "status", "deps", "build", "bundle", "setup", "web"))
     default_workspace = REPOSITORY.parent.parent if REPOSITORY.parent.name == "src" else Path.cwd()
     parser.add_argument("--workspace", type=Path, default=default_workspace)
-    parser.add_argument("--profile", choices=("core", "openarmx"), default="openarmx")
+    parser.add_argument("--profile", choices=("core", "openarmx"), default="core",
+                        help="默认只安装通用平台；openarmx 供适配器开发使用")
     parser.add_argument("--manifest", type=Path, default=REPOSITORY / "workspace.repos")
     parser.add_argument("--transport", choices=("ssh", "https"), default="ssh")
     parser.add_argument("--jobs", type=int, default=2)
@@ -233,6 +247,11 @@ def main(argv=None):
     parser.add_argument("--robot-id", default="openarmx_v10_bimanual")
     parser.add_argument("--install-deps", action="store_true", help="setup 时安装 ROS/SDK/网页依赖，可能需要 sudo")
     parser.add_argument("--sdk-source", type=Path, help="已有 alg_dep 源码目录，供 deps 使用")
+    parser.add_argument("--host", default="0.0.0.0", help="web 的监听地址")
+    parser.add_argument("--port", type=int, default=7876)
+    parser.add_argument("--domain-id", type=int, default=14)
+    parser.add_argument("--plugin-root", type=Path)
+    parser.add_argument("--state-root", type=Path)
     args = parser.parse_args(argv)
     args.workspace = args.workspace.expanduser().resolve()
     args.manifest = args.manifest.expanduser().resolve()
@@ -251,10 +270,11 @@ def main(argv=None):
             sync(args, entries)
             if args.install_deps:
                 install_dependencies(args, entries)
-            bundle(args, entries) if args.profile == "openarmx" else build(args, entries)
+            build(args, entries)
+            print("通用软件已就绪。下一步运行 ./src/robot_bringup/workspace.sh web，在网页中配置机器人。")
         else:
             {"sync": sync, "status": status, "deps": install_dependencies,
-             "build": build, "bundle": bundle}[args.command](args, entries)
+             "build": build, "bundle": bundle, "web": web}[args.command](args, entries)
     except (WorkspaceError, OSError, ValueError, KeyError) as error:
         print(f"错误：{error}", file=sys.stderr)
         return 1

@@ -115,3 +115,18 @@ def test_existing_unversioned_gripper_is_not_overwritten(tmp_path):
     with pytest.raises(workspace.WorkspaceError, match="独立目录"):
         workspace.preflight_sync(tmp_path, {"openarmx_driver": {}})
     assert (alias / "local.txt").read_text() == "preserve"
+
+
+def test_default_setup_only_builds_generic_platform_without_zip_or_robot_selection(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(workspace, "require_platform", lambda: None)
+    for operation in ("sync", "build", "bundle"):
+        monkeypatch.setattr(workspace, operation,
+                            lambda args, entries, operation=operation: calls.append((operation, set(entries))))
+    assert workspace.main(["setup", "--workspace", str(tmp_path)]) == 0
+    assert [name for name, _ in calls] == ["sync", "build"]
+    for _, entries in calls:
+        assert len(entries) == 8
+        assert not entries & {"openarmx_driver", "openarmx_description", "humanoid_gripper"}
+    assert not (tmp_path / "deploy_artifacts").exists()
+    assert not (tmp_path / "core").exists()
