@@ -193,7 +193,7 @@ def build(args, entries):
     checked = ros_command(args.workspace, [args.workspace / "src/humanoid_motion_server/scripts/check_sdk_runtime",
                 "--sdk-root", args.workspace / "src/humanoid_motion_server/vendor/robo_manip"], overlay=False, capture=True)
     print(checked.splitlines()[-1], flush=True)
-    env = dict(os.environ, CMAKE_BUILD_PARALLEL_LEVEL=str(args.jobs))
+    env = dict(os.environ, CMAKE_BUILD_PARALLEL_LEVEL=str(args.jobs), MAKEFLAGS=f"-j{args.jobs}")
     paths = package_paths(args.workspace, entries)
     ros_command(args.workspace, ["colcon", "build", "--base-paths",
                 *paths.values(),
