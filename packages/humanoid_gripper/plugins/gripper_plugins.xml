@@ -1,0 +1,10 @@
+<library path="humanoid_ros_topic_gripper_driver">
+  <class
+    name="humanoid_gripper/RosTopicGripperDriver"
+    type="humanoid_gripper::RosTopicGripperDriver"
+    base_class_type="humanoid_driver_interface::GripperDriverPlugin">
+    <description>
+      Configurable adapter for named JointState, Float64, or Float64MultiArray gripper endpoints.
+    </description>
+  </class>
+</library>
