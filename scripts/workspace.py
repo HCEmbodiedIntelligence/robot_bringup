@@ -198,7 +198,7 @@ def build(args, entries):
     ros_command(args.workspace, ["colcon", "build", "--base-paths",
                 *paths.values(),
                 "--packages-select", *paths, "--symlink-install", "--cmake-clean-cache",
-                "--executor", "sequential", "--event-handlers", "console_cohesion-"], overlay=False, env=env)
+                "--executor", "sequential"], overlay=False, env=env)
 
 
 def bundle(args, entries):
