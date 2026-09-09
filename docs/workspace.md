@@ -82,7 +82,12 @@ ROS_DOMAIN_ID=14 ./src/robot_bringup/scripts/start_robot.sh 你在网页填写�
 `humanoid_manager` 的现有远端仍叫 `humanoid_adapter_manager`，清单已处理目录名映射。
 
 `--profile core` 是默认选项，表示上述通用软件。`--profile openarmx` 仅供开发适配器时显式选择，
-会额外下载 OpenArmX 源码并编译随仓库管理的 `packages/humanoid_gripper`；机器人正常安装无需此选项。
+会额外拉取 `openarmx_driver`、`openarmx_description` 和独立的 `humanoid_gripper` 仓库；
+夹爪源码位于 `src/humanoid_gripper`，不再放在 `robot_bringup/packages` 中。机器人正常安装无需此选项。
+旧的 `src/humanoid_gripper` 若是指向内置包的软链接，OpenArmX 同步会先克隆成功再替换链接；
+其他已有目录、错误链接、未提交修改或不同 origin 都不会被覆盖。
+迁移后使用 `workspace.sh build --profile openarmx` 清理 CMake 缓存并重建；
+手工构建夹爪包时追加 `--cmake-clean-cache`，避免缓存仍指向旧目录。
 旧的 `HC-teleop-robotic`、`teleop_vr_recv` 和 MuJoCo 不参与默认链路。
 
 配置流程的软件验收使用独立 ROS Domain 和 Mock 驱动；真实机器人仍需核对关节方向、零位，

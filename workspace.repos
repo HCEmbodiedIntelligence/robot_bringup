@@ -9,6 +9,7 @@
     "humanoid_motion_interfaces": {"type": "git", "url": "git@github.com:HCEmbodiedIntelligence/humanoid_motion_interfaces.git", "version": "main"},
     "humanoid_motion_server": {"type": "git", "url": "git@github.com:HCEmbodiedIntelligence/humanoid_motion_server.git", "version": "main"},
     "openarmx_driver": {"type": "git", "url": "git@github.com:HCEmbodiedIntelligence/openarmx_driver.git", "version": "main"},
+    "humanoid_gripper": {"type": "git", "url": "git@github.com:HCEmbodiedIntelligence/humanoid_gripper.git", "version": "main"},
     "openarmx_description": {"type": "git", "url": "https://github.com/openarmx/openarmx_description.git", "version": "425bf9f708e5c49092a5920a3f38a8719a6f2b07"}
   }
 }

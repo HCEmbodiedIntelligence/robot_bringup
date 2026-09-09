@@ -12,10 +12,11 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-OPENARMX = {"openarmx_driver", "openarmx_description"}
+OPENARMX = {"openarmx_driver", "openarmx_description", "humanoid_gripper"}
 ROS_SETUP = Path("/opt/ros/humble/setup.bash")
 
 
@@ -59,14 +60,18 @@ def canonical_remote(url):
     return url.removesuffix(".git").replace("git@github.com:", "https://github.com/").rstrip("/")
 
 
-def preflight_sync(workspace, entries):
+def legacy_gripper_link(workspace):
     alias = workspace / "src/humanoid_gripper"
     bundled = workspace / "src/robot_bringup/packages/humanoid_gripper"
-    if "openarmx_driver" in entries and (alias.exists() or alias.is_symlink()) and alias.resolve() != bundled.resolve():
-        raise WorkspaceError(f"{alias} 已有独立目录；请先保存并迁移到 robot_bringup/packages/humanoid_gripper。")
+    return alias.is_symlink() and alias.resolve() == bundled.resolve()
+
+
+def preflight_sync(workspace, entries):
     for name, item in entries.items():
         path = workspace / "src" / name
-        if not path.exists():
+        if name == "humanoid_gripper" and legacy_gripper_link(workspace):
+            continue  # Replaced only after the independent clone succeeds.
+        if not path.exists() and not path.is_symlink():
             continue
         if path.is_symlink() or not (path / ".git").exists():
             raise WorkspaceError(f"目标已存在且不是独立 Git 仓库: {path}")
@@ -120,22 +125,37 @@ def sync(args, entries):
     names = sorted(entries, key=lambda name: name != "robot_bringup")
     for name in names:
         path = args.workspace / "src" / name
-        changed = sync_one(path, entries[name], args.transport)
+        if name == "humanoid_gripper" and legacy_gripper_link(args.workspace):
+            # Clone first. A failed download must not remove the old link.
+            with tempfile.TemporaryDirectory(prefix=".gripper-migration-", dir=path.parent) as temporary:
+                checkout = Path(temporary) / "checkout"
+                sync_one(checkout, entries[name], args.transport)
+                if not legacy_gripper_link(args.workspace):
+                    raise WorkspaceError("夹爪路径在同步期间发生变化，未替换该目录。")
+                original = path.readlink()
+                path.unlink()  # Only the verified legacy symlink, never its target.
+                try:
+                    checkout.rename(path)
+                except OSError:
+                    path.symlink_to(original, target_is_directory=True)
+                    raise
+            print("humanoid_gripper 已从旧软链接迁移为独立仓库；原链接目标未删除。")
+            changed = True
+        else:
+            changed = sync_one(path, entries[name], args.transport)
         if changed and name == "robot_bringup" and path.resolve() == REPOSITORY:
             print("统一入口已更新，重新载入仓库清单。", flush=True)
             os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
-    if "openarmx_driver" in entries:
+    if "humanoid_gripper" not in entries and legacy_gripper_link(args.workspace):
         alias = args.workspace / "src/humanoid_gripper"
-        if not alias.is_symlink():
-            alias.symlink_to("robot_bringup/packages/humanoid_gripper", target_is_directory=True)
+        if not alias.exists():
+            alias.unlink()
+            print("已移除旧夹爪悬空软链接；通用安装不拉取夹爪插件源码。")
     print(f"已同步 {len(entries)} 个仓库。")
 
 
 def package_paths(workspace, entries):
-    paths = {name: workspace / "src" / name for name in entries}
-    if "openarmx_driver" in entries:
-        paths["humanoid_gripper"] = workspace / "src/robot_bringup/packages/humanoid_gripper"
-    return paths
+    return {name: workspace / "src" / name for name in entries}
 
 
 def require_sources(workspace, entries):

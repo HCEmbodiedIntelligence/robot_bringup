@@ -11,6 +11,10 @@
 随后运行下面的统一 launch，在网页中导入驱动/模型、新建并配置机器人。
 仅拉源码用 `workspace.sh sync`。`core` 是默认安装选项的名字，不会生成 core 文件夹。
 
+`humanoid_gripper` 已拆为独立插件仓库，源码路径为 `src/humanoid_gripper`。
+本仓库不再携带夹爪实现。默认通用安装不拉取夹爪源码；机器人只需通过网页导入预编译的夹爪 ZIP。
+开发 OpenArmX 适配器时，`--profile openarmx` 才会关联拉取和编译这个独立仓库。
+
 ## 一个入口启动网页和机器人服务
 
 原有 `registered_robot.launch.py` 现为统一入口，不需要另一套 launch 或每次手写机器人 ID：
