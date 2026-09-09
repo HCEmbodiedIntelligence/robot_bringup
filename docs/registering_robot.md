@@ -7,8 +7,8 @@
 2. `robot_model`：motion/channel/tool 配置及运动学 URDF；
 3. 内部组合清单：由管理器保存，只引用前两个插件 ID，不要求用户制作 ZIP。
 
-目标机只安装核心包，不安装或编译厂商 driver、description、bringup 源码。ZIP schema、校验规则和
-CLI 用法见
+目标机安装核心包并导入预编译插件，无需编译插件源码。插件若声明厂商 ROS 启动依赖，
+对应运行包须预装或随插件提供。ZIP schema、校验规则和 CLI 用法见
 [`humanoid_manager/docs/deploying_plugins.md`](../../humanoid_manager/docs/deploying_plugins.md)。
 
 ## 一致性边界
@@ -46,7 +46,9 @@ ros2 launch robot_bringup registered_robot.launch.py \
 日常可省略 `robot_id`，在网页选机器人并点击开启；启动入口记住上次开启的选择。
 该入口启动网页，并通过独立的 `humanoid_manager/managed_robot.launch.py` 子进程管理机器人、相机和配置状态节点。
 网页保存后点击“重启机器人”才加载新版本，网页自身不会重启。`start_teleop` 和 `start_cameras` 可从网页选择。
-厂商自有 launch 可填在 `registered_robot.launch.py` 顶部的 `EXTERNAL_BRINGUP`，随机器人一起关闭/重启；
+机械臂驱动和可选夹爪插件可在清单中声明 `startup`，自动启动各自所需节点和厂商 launch；
+通用入口在初始化成功后启动控制运行时，更换设备时启动项随插件切换。
+厂商自有 launch 也可填在 `registered_robot.launch.py` 顶部的 `EXTERNAL_BRINGUP`，随机器人一起关闭/重启；
 通用仓库默认不预设某款硬件。详见 [统一启动说明](../README.md)。
 仅机器人、不启网页的兼容模式使用 `web:=false robot_id:=my_robot_v1`，此时可分别设置
 `start_driver`、`start_gripper`、`start_motion`、`start_teleop` 和 `start_cameras`。

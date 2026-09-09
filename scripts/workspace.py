@@ -16,7 +16,6 @@ import tempfile
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-OPENARMX = {"openarmx_driver", "openarmx_description", "humanoid_gripper"}
 ROS_SETUP = Path("/opt/ros/humble/setup.bash")
 
 
@@ -43,7 +42,14 @@ def git(path, *arguments):
 
 def repositories(manifest, profile):
     # JSON is a YAML subset; the same manifest also works with vcstool.
-    entries = json.loads(Path(manifest).read_text())["repositories"]
+    document = json.loads(Path(manifest).read_text())
+    entries = document["repositories"]
+    profiles = document.get("profiles", {"core": {"repositories": list(entries)}})
+    if profile not in profiles:
+        raise WorkspaceError(f"清单未定义 profile: {profile}")
+    selected = profiles[profile]["repositories"]
+    if not isinstance(selected, list) or any(name not in entries for name in selected):
+        raise WorkspaceError("profile 引用了不存在的仓库")
     result = {}
     for name, item in entries.items():
         if not re.fullmatch(r"[A-Za-z0-9_]+", name) or item.get("type") != "git":
@@ -51,7 +57,7 @@ def repositories(manifest, profile):
         if not isinstance(item.get("url"), str) or not item["url"] or not re.fullmatch(
                 r"[A-Za-z0-9][A-Za-z0-9_./-]*", item.get("version", "")):
             raise WorkspaceError(f"无效的 URL 或版本: {name}")
-        if profile == "openarmx" or name not in OPENARMX:
+        if name in selected:
             result[name] = item
     return result
 
@@ -222,15 +228,19 @@ def build(args, entries):
 
 
 def bundle(args, entries):
-    if args.profile != "openarmx":
-        raise WorkspaceError("core 只安装通用软件；OpenArmX 整机打包请选择 --profile openarmx。")
+    profile = json.loads(args.manifest.read_text()).get("profiles", {}).get(args.profile, {})
+    recipe = args.recipe or profile.get("release_recipe")
+    if not recipe:
+        raise WorkspaceError("请通过 --recipe 指定整机打包配方，或在 profile 中声明 release_recipe")
+    recipe = (args.workspace / recipe).resolve()
     # Deliberately always build before packaging: no reuse of old deployment ZIPs.
     build(args, entries)
     output = args.output or args.workspace / "deploy_artifacts" / (
-        "openarmx-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
+        args.profile + "-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
     ros_command(args.workspace, ["/usr/bin/python3", args.workspace / "src/robot_bringup/scripts/create_release.py",
                 "--workspace", args.workspace, "--output", output,
-                "--manifest", args.manifest, "--robot-id", args.robot_id])
+                "--manifest", args.manifest, "--profile", args.profile, "--recipe", recipe,
+                *(["--robot-id", args.robot_id] if args.robot_id else [])])
 
 
 def status(args, entries):
@@ -258,13 +268,13 @@ def main(argv=None):
     parser.add_argument("command", choices=("sync", "status", "deps", "build", "bundle", "setup", "web"))
     default_workspace = REPOSITORY.parent.parent if REPOSITORY.parent.name == "src" else Path.cwd()
     parser.add_argument("--workspace", type=Path, default=default_workspace)
-    parser.add_argument("--profile", choices=("core", "openarmx"), default="core",
-                        help="默认只安装通用平台；openarmx 供适配器开发使用")
+    parser.add_argument("--profile", default="core", help="workspace.repos 中定义的仓库集合")
+    parser.add_argument("--recipe", type=Path, help="整机发布配方，相对 workspace 或绝对路径")
     parser.add_argument("--manifest", type=Path, default=REPOSITORY / "workspace.repos")
     parser.add_argument("--transport", choices=("ssh", "https"), default="ssh")
     parser.add_argument("--jobs", type=int, default=2)
     parser.add_argument("--output", type=Path, help="整机产物目录（必须不存在）")
-    parser.add_argument("--robot-id", default="openarmx_v10_bimanual")
+    parser.add_argument("--robot-id", default="")
     parser.add_argument("--install-deps", action="store_true", help="setup 时安装 ROS/SDK/网页依赖，可能需要 sudo")
     parser.add_argument("--sdk-source", type=Path, help="已有 alg_dep 源码目录，供 deps 使用")
     parser.add_argument("--host", default="0.0.0.0", help="web 的监听地址")
@@ -281,7 +291,7 @@ def main(argv=None):
         args.sdk_source = args.sdk_source.expanduser().resolve()
     if args.jobs < 1:
         parser.error("--jobs 必须为正整数")
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", args.robot_id):
+    if args.robot_id and not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,63}", args.robot_id):
         parser.error("无效的 --robot-id")
     try:
         entries = repositories(args.manifest, args.profile)

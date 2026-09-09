@@ -152,20 +152,15 @@ ros2 launch robot_bringup registered_robot.launch.py \
 
 ## 接入 OpenArmX 等厂商 launch
 
-在 [registered_robot.launch.py](launch/registered_robot.launch.py) 顶部的 `EXTERNAL_BRINGUP`
-中填写已安装、验证过的 ROS 包、launch 文件名及参数，例如：
+优先由机械臂驱动或夹爪插件在 `manifest.yaml` 的 `startup` 中声明启动依赖。
+统一入口自动启动所选插件的依赖，初始化成功后再启动控制运行时；更换机器人或夹爪无需修改本包。
+配置协议见 [插件启动依赖](../humanoid_manager/docs/deploying_plugins.md#插件自身的启动依赖)。
+已有插件没有 `startup` 时保持原行为。下面的设置用于由整机集成单独提供的厂商服务，
+不要与插件中的同一个启动项重复配置。
 
-```python
-EXTERNAL_BRINGUP = {
-    'package': 'your_vendor_bringup',
-    'launch_file': 'robot.launch.py',
-    'arguments': {'your_argument': 'your_value'},
-}
-```
-
-修改后重新构建 `robot_bringup`，退出并重新启动整个统一 launch。
-直接修改 launch 文件属于本地源码修改，后续同步时也会受到前述检查保护。
-也支持通过启动参数配置：`vendor_package:=... vendor_launch_file:=... vendor_arguments:='{"key":"value"}'`。
+在机器人配置页面编辑插件的启动步骤，或通过启动参数提供额外整机服务：
+`vendor_package:=... vendor_launch_file:=... vendor_arguments:='{"key":"value"}'`。
+无需修改通用 launch 源码。通常优先让设备插件声明自己的依赖。
 参数值须为字符串；不接受 `$(...)` 表达式。厂商 launch 应直接管理自己的子进程，不应自行 daemonize 或启动脱离监管的服务。
 这些服务在机器人子进程内启动，随网页按钮一起关闭/重启；不能作为网页的平级独立进程，否则按钮无法管理它们。
 厂商包需事先安装并编译，不会自动下载；默认不启动任何特定厂商硬件。
@@ -175,3 +170,17 @@ OpenArmX 应填写实际验证过的启动参数，确保机械臂 7 轴控制�
 旧的仅机器人集成可显式指定 `web:=false robot_id:=my_robot`，然后使用原组件开关。
 默认遥操作关闭，相机开启；网页可选择。遥操作使用模型的 `hc_teleop_config` 启动 `hc_teleop_recv`，不启动旧接收端。
 插件部署协议见 [docs/registering_robot.md](docs/registering_robot.md)。
+
+## 增加其他机型的构建与发布配方
+
+`workspace.repos` 的 `profiles` 字段决定每个 profile 包含的仓库，以及可选的 `release_recipe`。
+`workspace.sh --profile <名字>` 不再限定机型。`bundle` 从所选配方执行插件打包命令，
+验证库与插件类型，生成整机包，再用临时管理器验证导入和应用。
+也可直接传入 `--recipe path/to/release.json`（路径相对工作区）。
+
+配方包含 `schema_version: 1`、`robot_id`、`name`、`plugins`；每个插件使用
+`role: driver/model/gripper` 和 `command` 参数数组，支持 `${workspace}` 与 `${output}`。
+可声明多个 gripper 条目，以及可选的 `artifact_name`、`installed_library`、`files` 和 `notes`。
+OpenArmX 配方位于 `openarmx_driver/deployment/release.json`；新增机型增加配方及插件即可。
+
+夹爪虚接口、多实例配置和启动规则见 [设备实例说明](../humanoid_manager/docs/device_instances.md)。

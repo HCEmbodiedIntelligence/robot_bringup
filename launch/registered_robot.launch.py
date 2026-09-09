@@ -3,7 +3,7 @@
 
 External hardware launches must belong to the robot child process, not beside
 the web process; otherwise the web stop/restart buttons cannot supervise them.
-Configure EXTERNAL_BRINGUP once for the machine, or supply vendor_* arguments.
+Declare vendor startup in the plugin, or supply vendor_* integration arguments.
 Use web:=false only for legacy headless integrations.
 """
 
@@ -19,11 +19,7 @@ from launch.substitutions import LaunchConfiguration
 from humanoid_manager.deployment import DEFAULT_PLUGIN_ROOT
 
 
-# Integrators may fill their tested vendor launch here. Empty means the plugin
-# connects hardware directly, or vendor services are independently supervised.
-# For OpenArmX, select its installed bringup package and tested launch file.
-# Supply your tested arguments, including the split 7-joint arm/gripper
-# controllers; do not enable the vendor's default 8-joint arm controllers.
+# Empty integration defaults; robot-specific startup belongs to plugin configuration.
 EXTERNAL_BRINGUP = {'package': '', 'launch_file': '', 'arguments': {}}
 
 

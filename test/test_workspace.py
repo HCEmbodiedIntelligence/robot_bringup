@@ -181,3 +181,14 @@ def test_default_setup_only_builds_generic_platform_without_zip_or_robot_selecti
         assert not entries & {"openarmx_driver", "openarmx_description", "humanoid_gripper"}
     assert not (tmp_path / "deploy_artifacts").exists()
     assert not (tmp_path / "core").exists()
+
+
+def test_arbitrary_profiles_are_selected_from_manifest_data(tmp_path):
+    entries = {name: {'type': 'git', 'url': 'https://example.invalid/' + name, 'version': 'main'}
+               for name in ('platform', 'brand_new_arm', 'vacuum_tool')}
+    manifest = tmp_path / 'workspace.repos'
+    manifest.write_text(json.dumps({'repositories': entries, 'profiles': {
+        'bench': {'repositories': ['platform', 'vacuum_tool']}}}))
+    assert list(workspace.repositories(manifest, 'bench')) == ['platform', 'vacuum_tool']
+    with pytest.raises(workspace.WorkspaceError, match='profile'):
+        workspace.repositories(manifest, 'undefined')

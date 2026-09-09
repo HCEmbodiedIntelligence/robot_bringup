@@ -12,9 +12,10 @@ import tempfile
 import zipfile
 
 from humanoid_manager.configuration import ConfigurationManager
+from humanoid_manager.plugin_metadata import expand
 from humanoid_manager.deployment import deploy_archive, validate_archive, resolve_robot_deployment
 
-from workspace import repositories, git, package_paths
+from workspace import repositories, git
 
 
 def digest(path):
@@ -34,66 +35,73 @@ def source_versions(workspace, entries):
     return result
 
 
-def build_release(workspace, output, manifest, robot_id):
+def build_release(workspace, output, manifest, robot_id="", *, recipe, profile="core"):
+    recipe = json.loads(Path(recipe).read_text())
+    if recipe.get("schema_version") != 1:
+        raise ValueError("unsupported release recipe schema")
+    robot_id = robot_id or recipe["robot_id"]
+    artifact_name = recipe.get("artifact_name", robot_id + "-complete.zip")
+    if Path(artifact_name).name != artifact_name or not artifact_name.endswith(".zip"):
+        raise ValueError("artifact_name must be a ZIP filename")
     workspace, output = Path(workspace).resolve(), Path(output).resolve()
     if output.exists():
         raise ValueError(f"产物目录已存在，请另选 --output：{output}")
-    entries = repositories(manifest, "openarmx")
-    paths = package_paths(workspace, entries)
+    entries = repositories(manifest, profile)
     versions = source_versions(workspace, entries)
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=".openarmx-release-", dir=output.parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix=".robot-release-", dir=output.parent) as temporary:
         work = Path(temporary)
         release = work / "release"
         release.mkdir()
-        specifications = [
-            ("driver", "openarmx_driver", "tools/create_deployment_bundle.py", [
-                workspace / "install/openarmx_driver", release / "driver.zip"]),
-            ("model", "openarmx_driver", "tools/create_model_bundle.py", [
-                release / "model.zip", "--description-share",
-                workspace / "src/openarmx_description"]),
-            ("gripper", "humanoid_gripper", "tools/create_deployment_bundle.py", [
-                workspace / "install/humanoid_gripper", release / "gripper.zip",
-                "--config", "openarmx_v10_bimanual.yaml",
-                "--plugin-id", "openarmx_v10_bimanual_gripper"]),
-        ]
         manifests = {}
-        for kind, package, script, arguments in specifications:
-            subprocess.run(["/usr/bin/python3", str(paths[package] / script),
-                            *map(str, arguments)], check=True)
-            archive = release / f"{kind}.zip"
-            manifests[kind] = validate_archive(archive, check_linkage=True)
-            deploy_archive(archive, work / "plugins")
-
-        # Check the installed libraries, not the differently linked build-tree ELF files.
-        for kind, package in (("driver", "openarmx_driver"), ("gripper", "humanoid_gripper")):
-            member = manifests[kind]["library"]
-            with zipfile.ZipFile(release / f"{kind}.zip") as archive:
-                packed_hash = hashlib.sha256(archive.read(member)).hexdigest()
-            installed = workspace / "install" / package / "lib" / Path(member).name
-            if digest(installed) != packed_hash:
-                raise ValueError(f"{kind}: ZIP 与本次安装的驱动库不一致")
+        for index, specification in enumerate(recipe['plugins']):
+            role = specification['role']
+            if role not in {'driver', 'model', 'gripper'}:
+                raise ValueError('plugin role must be driver, model or gripper')
+            key = role if role != 'gripper' else 'gripper-' + str(index)
+            if key in manifests:
+                raise ValueError(f'duplicate plugin role: {role}')
+            archive = release / f'{key}.zip'
+            values = {'workspace': str(workspace), 'output': str(archive)}
+            command = expand(specification['command'], values)
+            if not isinstance(command, list) or not command or not all(isinstance(arg, str) for arg in command):
+                raise ValueError('release command must be an argv list')
+            subprocess.run(command, check=True, cwd=workspace)
+            checked = validate_archive(archive, check_linkage=True)
+            expected = {'driver': 'hardware_driver', 'model': 'robot_model', 'gripper': 'gripper_driver'}[role]
+            if checked.get('plugin_type') != expected:
+                raise ValueError(f'{key}: recipe role differs from produced plugin type')
+            manifests[key] = checked
+            deploy_archive(archive, work / 'plugins')
+            if 'installed_library' in specification:
+                installed = Path(expand(specification['installed_library'], values))
+                with zipfile.ZipFile(archive) as packed:
+                    checksum = hashlib.sha256(packed.read(checked['library'])).hexdigest()
+                if digest(installed) != checksum:
+                    raise ValueError(f'{key}: ZIP differs from the installed library')
 
         manager = ConfigurationManager(work / "plugins", work / "state")
-        robot = manager.create(robot_id, "OpenArmX v10 双臂", driver_id=manifests["driver"]["plugin_id"],
-                               model_id=manifests["model"]["plugin_id"],
-                               gripper_id=manifests["gripper"]["plugin_id"])
-        complete = release / "openarmx-v10-complete.zip"
-        manager.export(robot_id, robot["latest"], complete)
+        grippers = [value for key, value in manifests.items() if key.startswith('gripper-')]
+        robot = manager.create(robot_id, recipe['name'], driver_id=manifests['driver']['plugin_id'],
+                               model_id=manifests['model']['plugin_id'],
+                               gripper_id=grippers[0]['plugin_id'] if len(grippers) == 1 else '',
+                               gripper_ids={f'gripper_{i}': item['plugin_id'] for i, item in enumerate(grippers)} if len(grippers) > 1 else None)
+        complete = release / artifact_name
+        manager.export(robot_id, robot['latest'], complete)
 
         # Exercise exactly the manager-page import and apply path using temporary state.
         imported_manager = ConfigurationManager(work / "import-plugins", work / "import-state")
         imported = imported_manager.import_workspace(complete, "release_acceptance", "导入验收")
         imported_manager.apply(imported["robot_id"], imported["latest"], imported["etag"])
         resolved = resolve_robot_deployment(work / "import-plugins", imported["robot_id"])
-        if not resolved.gripper_class or "hc_teleop_config" not in resolved.resources:
-            raise ValueError("整机包导入后缺少夹爪或遥操作配置")
-
-        controller_config = paths["humanoid_gripper"] / "config/v10_controllers/openarmx_v10_split_controllers.yaml"
-        shutil.copyfile(controller_config, release / controller_config.name)
+        if len(resolved.gripper_instances) != len(grippers):
+            raise ValueError('imported gripper instance count differs from recipe')
+        for relative in recipe.get('files', []):
+            source = workspace / relative
+            shutil.copyfile(source, release / source.name)
         if any(item["dirty"] for item in versions.values()):
             print("提示：本次含本地未提交修改，已在 source-revisions.json 中标记。")
-        lock = {"repositories": {name: {**entry, "version": versions[name]["commit"]}
+        lock = {"profiles": {profile: {"repositories": list(entries)}}, "repositories": {name: {**entry, "version": versions[name]["commit"]}
                                   for name, entry in entries.items()}}
         (release / "workspace.lock.repos").write_text(json.dumps(lock, indent=2) + "\n")
         report = {"schema_version": 1, "created_at": datetime.now(timezone.utc).isoformat(),
@@ -102,16 +110,12 @@ def build_release(workspace, output, manifest, robot_id):
                   "hardware_verified": False,
                   "sha256": {path.name: digest(path) for path in sorted(release.iterdir())}}
         (release / "source-revisions.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-        (release / "README.txt").write_text(
-            "在 humanoid_manager 的机器人配置页面，选择“导入配置包”，类型为整机配置。\n"
-            "上传 openarmx-v10-complete.zip，填写新的配置 ID 和名称，导入后保存并应用。\n"
-            "不要解压整机 ZIP；driver.zip/model.zip/gripper.zip 仅供单独导入插件。\n"
-            "夹爪映射已提供，默认关闭；可在夹爪配置中启用。机械臂前端默认也未使能。\n"
-            "官方硬件层须使用每臂 7 轴、夹爪独立的控制器；配置见同目录 YAML。\n"
-            "目标机要求 Ubuntu 22.04 x86-64、ROS 2 Humble 和运动 SDK 的系统依赖。\n"
-            "本包已验证管理器导入及解析，尚未验收真实硬件运动。\n", encoding="utf-8")
+        (release / 'README.txt').write_text(
+            f"在机器人配置页面导入 {artifact_name}，保存、应用并启动机器人。\n"
+            + recipe.get('notes', '') + "\n已验证管理器导入、应用与解析；尚未验收真实硬件运动。\n",
+            encoding='utf-8')
         release.rename(output)
-    print(f"整机配置包：{output / 'openarmx-v10-complete.zip'}")
+    print(f"整机配置包：{output / artifact_name}")
     return output
 
 
@@ -120,9 +124,11 @@ def main():
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--robot-id", default="openarmx_v10_bimanual")
+    parser.add_argument("--robot-id", default="")
+    parser.add_argument("--profile", default="core")
+    parser.add_argument("--recipe", type=Path, required=True)
     args = parser.parse_args()
-    build_release(args.workspace, args.output, args.manifest, args.robot_id)
+    build_release(args.workspace, args.output, args.manifest, args.robot_id, recipe=args.recipe, profile=args.profile)
 
 
 if __name__ == "__main__":
