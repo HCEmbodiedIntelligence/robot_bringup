@@ -43,9 +43,13 @@ ros2 launch robot_bringup registered_robot.launch.py \
   start_teleop:=false
 ```
 
-`start_driver`、`start_gripper`、`start_motion`、`start_teleop` 和 `start_cameras` 控制网页已应用配置中的运行组件。
-该入口委托给 `humanoid_manager/managed_robot.launch.py`，因此不会漏掉相机和配置状态节点。机器人专用的硬件上电、
-CAN 初始化或厂商控制器启动不应写入这个通用 launch，由整机 supervisor 在外层编排。
+日常可省略 `robot_id`，在网页选机器人并点击开启；启动入口记住上次开启的选择。
+该入口启动网页，并通过独立的 `humanoid_manager/managed_robot.launch.py` 子进程管理机器人、相机和配置状态节点。
+网页保存后点击“重启机器人”才加载新版本，网页自身不会重启。`start_teleop` 和 `start_cameras` 可从网页选择。
+厂商自有 launch 可填在 `registered_robot.launch.py` 顶部的 `EXTERNAL_BRINGUP`，随机器人一起关闭/重启；
+通用仓库默认不预设某款硬件。详见 [统一启动说明](../README.md)。
+仅机器人、不启网页的兼容模式使用 `web:=false robot_id:=my_robot_v1`，此时可分别设置
+`start_driver`、`start_gripper`、`start_motion`、`start_teleop` 和 `start_cameras`。
 
 ## HC PICO 末端遥操作
 
@@ -60,4 +64,4 @@ ros2 launch robot_bringup registered_robot.launch.py \
 
 接收器默认禁用，按 PICO 右手 A 或调用 `/hc_teleop_recv/set_enabled` 后，松开再按 Grip 开始控制。
 旧的 `teleop_config` 不再受支持；所有遥操作配置统一使用 `hc_teleop_config`。
-模型更换后按新 robot_id 重新启动即可，不在通用 launch 中添加机器人名称分支。
+模型更换后在页面保存并重启即可，不在通用 launch 中添加机器人名称分支。

@@ -23,22 +23,24 @@ mkdir -p teleop_ws/src
 git clone git@github.com:HCEmbodiedIntelligence/robot_bringup.git teleop_ws/src/robot_bringup
 cd teleop_ws
 ./src/robot_bringup/workspace.sh setup --install-deps --jobs 2
-./src/robot_bringup/workspace.sh web
+source install/setup.bash
+ros2 launch robot_bringup registered_robot.launch.py
 ```
 
 setup 会拉取源码、安装 ROS/SDK/网页依赖并构建。SDK 的系统依赖源码编译可能耗时较长，
 安装时可能请求 sudo 密码。已有 `alg_dep` 可加 `--sdk-source /path/to/alg_dep`；
 系统依赖已安装的电脑可省略 `--install-deps`。
 
-web 在局域网地址 `http://机器人IP:7876/dashboard/#robots` 打开管理器，默认 ROS Domain 为 14。
-也可指定地址、端口和配置存放目录：
+统一 launch 提供网页和机器人开启/关闭/重启按钮，地址 `http://机器人IP:7876/dashboard/#robots`，
+首次默认 ROS Domain 为 14，已有设置保持不变。也可指定地址、端口和配置存放目录：
 
 ```bash
-./src/robot_bringup/workspace.sh web --host 0.0.0.0 --port 7876 --domain-id 14
+ros2 launch robot_bringup registered_robot.launch.py host:=0.0.0.0 port:=7876 domain_id:=14
 ```
 
-需要自定义目录时追加 `--plugin-root /path/to/plugins --state-root /path/to/manager-state`。
+需要自定义目录时追加 `plugin_root:=/path/to/plugins state_root:=/path/to/manager-state`。
 默认插件目录优先使用已有 `/var/lib/humanoid-plugins`，否则使用 `~/.local/share/humanoid-plugins`。
+原 `workspace.sh web` 保留为只开网页、不监管机器人的兼容入口。网页仅应部署在可信局域网。
 
 ## 在网页配置机器人
 
@@ -48,14 +50,15 @@ web 在局域网地址 `http://机器人IP:7876/dashboard/#robots` 打开管理�
 2. 点击“新建机器人”，填写 ID 和名称，选择已导入的驱动及模型。
 3. 在页面编辑驱动话题、关节映射、URDF、运动通道、遥操作输入和坐标映射；按需配置相机与夹爪。
 4. 点击“保存配置”。系统校验关节、限位、坐标系、话题和资源的一致性，生成配置版本。
-5. 停止旧机器人进程，点击“应用配置”，将版本写入部署目录。
+5. 点击“开启机器人”；以后修改并保存后，提示“重启机器人后生效”，由用户点击“重启机器人”。
 
 这里的驱动/模型插件是分别导入的适配资源，不要求提供整机 ZIP。驱动插件必须实现平台接口；
 只填写厂商名称或 IP 不能代替缺失的硬件驱动。
-网页保存不会启动运动，应用也不会热改正在运行的机器人。应用要求管理器取得新鲜 ROS 节点
-状态以确认机器人进程已停止，因此正常配置使用默认在线网页模式。
+网页保存不会启动运动，也不会热改正在运行的机器人。“开启/重启”在机器人停止后自动应用最新保存版本。
+管理器必须取得新鲜 ROS 节点状态确认机器人已停止；“关闭/重启”只处理本入口管理的机器人和厂商服务，不会关闭网页。
+关闭浏览器不影响服务；Ctrl+C 退出统一 launch 则关闭整套服务。首次未选择机器人时只开网页；以后同一命令启动上次开启的机器人。
 
-硬件驱动准备就绪后，启动网页中已应用的机器人 ID：
+不需要每次按机器人 ID 换命令。原有仅机器人脚本仍保留给外部进程监管的高级集成（不能再同时点击网页开启）：
 
 ```bash
 ROS_DOMAIN_ID=14 ./src/robot_bringup/scripts/start_robot.sh 你在网页填写的机器人ID
@@ -64,6 +67,8 @@ ROS_DOMAIN_ID=14 ./src/robot_bringup/scripts/start_robot.sh 你在网页填写�
 如果网页使用自定义插件目录，启动命令追加 `plugin_root:=/同一个目录`。
 硬件层和管理器使用相同 ROS Domain。底层 CAN、厂商 SDK 或 ros2_control 的启动由对应硬件
 适配完成；本入口按网页配置启动平台运行时、运动服务、接收端和已配置相机。
+厂商自有 launch 可在 `registered_robot.launch.py` 的 `EXTERNAL_BRINGUP` 中配置，随按钮统一监管，
+具体见 [统一启动说明](../README.md)。不要同时在别处再次启动同一组驱动。
 
 ## 更新
 
