@@ -41,6 +41,7 @@ def test_default_starts_web_supervisor_not_hardware(entry):
     command = [perform_substitutions(context, part) for part in actions[0].cmd]
     assert command[0].endswith('/humanoid_manager/start_configurator.sh')
     assert '--run-robot' in command
+    assert command[command.index('--parent-pid') + 1] == str(os.getpid())
     assert '--robot-id' not in command
     assert '--start-teleop' not in command
 
@@ -71,7 +72,8 @@ def test_headless_requires_robot_id(entry):
 
 
 @pytest.mark.parametrize('previous_robot', [False, True])
-def test_original_launch_really_serves_web_and_exits_cleanly(tmp_path, previous_robot):
+@pytest.mark.parametrize('exit_signal', [signal.SIGINT, signal.SIGKILL])
+def test_original_launch_really_serves_web_and_exits_cleanly(tmp_path, previous_robot, exit_signal):
     aiohttp = pytest.importorskip('aiohttp')
     pytest.importorskip('mcap')
     from humanoid_manager.web.config import ConfigStore
@@ -122,12 +124,24 @@ def test_original_launch_really_serves_web_and_exits_cleanly(tmp_path, previous_
                         assert (await response.json())['runtime']['phase'] == 'stopped'
             finally:
                 if process.returncode is None:
-                    process.send_signal(signal.SIGINT)
+                    process.send_signal(exit_signal)
                     try:
                         await asyncio.wait_for(process.wait(), 25)
                     except asyncio.TimeoutError:
                         os.killpg(process.pid, signal.SIGKILL)
                         await process.wait()
                         raise
-            assert process.returncode == 0, (tmp_path / 'launch.log').read_text()
+            from humanoid_manager.runtime_state import acquire_manager_run_lock
+            from humanoid_manager.web.robot_launcher import _group_running
+            for _ in range(100):
+                if not _group_running(process.pid):
+                    break
+                await asyncio.sleep(.1)
+            else:
+                os.killpg(process.pid, signal.SIGKILL)
+                raise AssertionError('Web process survived its launch owner')
+            expected = 0 if exit_signal == signal.SIGINT else -signal.SIGKILL
+            assert process.returncode == expected, (tmp_path / 'launch.log').read_text()
+            with acquire_manager_run_lock(tmp_path / 'plugins'):
+                pass
     asyncio.run(check())

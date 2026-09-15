@@ -8,6 +8,7 @@ Use web:=false only for legacy headless integrations.
 """
 
 import json
+import os
 from pathlib import Path
 
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
@@ -53,7 +54,7 @@ def launch_system(context):
     if not value('workspace') or not script.is_file():
         raise RuntimeError('找不到 humanoid_manager/start_configurator.sh，请传 workspace:=源码工作区路径')
     command = [str(script),
-               '--run-robot', '--bringup-json', bringup]
+               '--run-robot', '--parent-pid', str(os.getpid()), '--bringup-json', bringup]
     for name in ('host', 'port', 'domain_id', 'plugin_root', 'state_root', 'robot_id',
                  'start_teleop', 'start_cameras'):
         if value(name):
