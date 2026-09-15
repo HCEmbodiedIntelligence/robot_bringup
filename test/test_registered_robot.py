@@ -70,7 +70,8 @@ def test_headless_requires_robot_id(entry):
         entry.launch_system(context_for(entry, web='false'))
 
 
-def test_original_launch_really_serves_web_and_exits_cleanly(tmp_path):
+@pytest.mark.parametrize('previous_robot', [False, True])
+def test_original_launch_really_serves_web_and_exits_cleanly(tmp_path, previous_robot):
     aiohttp = pytest.importorskip('aiohttp')
     pytest.importorskip('mcap')
     from humanoid_manager.web.config import ConfigStore
@@ -80,11 +81,14 @@ def test_original_launch_really_serves_web_and_exits_cleanly(tmp_path):
         port = probe.getsockname()[1]
     state = tmp_path / 'state'
     store = ConfigStore(state / 'configurator.yaml')
-    # No ROS observer and no configured robot: this smoke test cannot start hardware.
+    # No real robot or hardware packages: a saved selection must not be launched.
     store.save({'server': {'host': '127.0.0.1', 'port': port}, 'ros': {'enabled': False},
         'adapter_manager': {'enabled': True, 'plugin_root': str(tmp_path / 'plugins'),
             'state_root': str(state / 'configuration'),
             'cli': str(source.parent / 'humanoid_manager/scripts/humanoid_pluginctl.py')}})
+    if previous_robot:
+        from humanoid_manager.startup import StartupPlans, default_plan
+        StartupPlans(state).save(default_plan('saved_robot'), 'initial')
     async def check():
         with (tmp_path / 'launch.log').open('w') as log:
             process = await asyncio.create_subprocess_exec('ros2', 'launch',
@@ -100,7 +104,8 @@ def test_original_launch_really_serves_web_and_exits_cleanly(tmp_path):
                                 document = await response.json()
                                 assert document['runtime']['enabled'] is True
                                 assert document['runtime']['owned_processes'] == 0
-                                assert document['selected_robot'] == ''
+                                assert document['selected_robot'] == ('saved_robot' if previous_robot else '')
+                                assert document['runtime']['phase'] == 'stopped'
                                 break
                         except aiohttp.ClientConnectionError:
                             if process.returncode is not None:
@@ -111,6 +116,10 @@ def test_original_launch_really_serves_web_and_exits_cleanly(tmp_path):
                     async with client.get(f'http://127.0.0.1:{port}/dashboard/') as response:
                         assert response.status == 200
                         assert '开启机器人' in await response.text()
+                    # The old autostart path entered waiting as soon as HTTP was ready.
+                    await asyncio.sleep(.3)
+                    async with client.get(f'http://127.0.0.1:{port}/api/launcher') as response:
+                        assert (await response.json())['runtime']['phase'] == 'stopped'
             finally:
                 if process.returncode is None:
                     process.send_signal(signal.SIGINT)
